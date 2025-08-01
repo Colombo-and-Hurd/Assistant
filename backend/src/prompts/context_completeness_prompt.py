@@ -27,7 +27,7 @@ The output should be a JSON object with two fields:
 Example ( Most Important ):
 If the provided context is missing or empty then there is no sense in moving forward, politely request the user to upload the documents.
 {{
-    "missing_fields": [],
+    "missing_fields": ["documents"],
     "follow_up_question": "have something like this : Hey, I can help with your query could you please upload the documents so that I can analyze them and provide the information?"
 }}
 
