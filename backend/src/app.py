@@ -28,29 +28,6 @@ async def on_chat_start():
         thread_id = str(uuid.uuid4())
         cl.user_session.set("thread_id", thread_id)
 
-        files = None
-        while files is None:
-            files = await cl.AskFileMessage(
-                content="Please upload your PDF documents to begin!",
-                accept=["application/pdf"],
-                max_size_mb=100,
-                max_files=10,
-                timeout=300,
-            ).send()
-        
-        file_paths = []
-        for file_info in files:
-            file_path = os.path.join(UPLOAD_DIR, f"{thread_id}_{file_info.name}")
-            with open(file_info.path, "rb") as f_in, open(file_path, "wb") as f_out:
-                f_out.write(f_in.read())
-            file_paths.append(file_path)
-
-        agent.process_pdfs(file_paths, thread_id)
-
-        await cl.Message(
-            content=f"Processed {len(files)} PDF(s). You can now ask me to generate a document."
-        ).send()
-
     except Exception as e:
         await cl.Message(content=f"An error occurred: {e}").send()
 
