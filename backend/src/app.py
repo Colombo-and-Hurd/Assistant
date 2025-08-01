@@ -34,12 +34,42 @@ async def on_chat_start():
 
 @cl.on_message
 async def on_message(message: cl.Message):
+    agent = cl.user_session.get("agent")
+    thread_id = cl.user_session.get("thread_id")
+
+    if message.elements:
+        files = [file for file in message.elements if "application/pdf" in file.mime]
+        
+        if files:
+            file_paths = []
+            for file in files:
+                content = file.content
+                if content is None and file.path:
+                    with open(file.path, "rb") as f:
+                        content = f.read()
+
+                if content:
+                    file_path = os.path.join(UPLOAD_DIR, f"{thread_id}_{file.name}")
+                    with open(file_path, "wb") as f:
+                        f.write(content)
+                    file_paths.append(file_path)
+                else:
+                    await cl.Message(content=f"Could not read content of file {file.name}.").send()
+
+            agent.process_pdfs(file_paths, thread_id)
+
+            await cl.Message(
+                content=f"Processed {len(files)} PDF(s)."
+            ).send()
+            
+            if not message.content.strip():
+                return
+
     conversation_history = cl.user_session.get("conversation_history")
     conversation_history.append(f"User: {message.content}")
     cl.user_session.set("conversation_history", conversation_history)
     
     graph = cl.user_session.get("graph")
-    thread_id = cl.user_session.get("thread_id")
     config = {"configurable": {"thread_id": thread_id}}
     
     # Create initial input with the user's message
