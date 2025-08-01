@@ -1,0 +1,51 @@
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore virtual environments
+venv/
+.env
+env
+
+# Ignore Python environment files
+*.env
+
+# Ignore package installations
+*.egg-info/
+*.egg
+pip-log.txt
+
+# Ignore log files
+*.log
+
+# Ignore IDE specific files
+.vscode/
+.idea/
+
+# Ignore other system files
+.DS_Store
+Thumbs.db
+
+# Ignore Python wheel and distribution files
+build/
+dist/
+*.egg-info/
+*.whl
+
+
+# Ignore cloned repos
+cloned_repos
+
+# Ignore service account key
+*-key.json
+backend/venv
+backend/__pycache__
+backend/data
+backend/uploads
+backend/prompts/__pycache__
+backend/prompts/lorSystemPrompt.pyc
+backend/prompts/lorSystemPrompt.pyo
+backend/prompts/lorSystemPrompt.pyd
+backend/prompts/lorSystemPrompt.pyw
+backend/prompts/lorSystemPrompt.pyz
+.cursor/
