@@ -41,27 +41,31 @@ async def on_message(message: cl.Message):
         files = [file for file in message.elements if "application/pdf" in file.mime]
         
         if files:
-            file_paths = []
-            for file in files:
-                content = file.content
-                if content is None and file.path:
-                    with open(file.path, "rb") as f:
-                        content = f.read()
+            async with cl.Step(name="Processing PDFs", type="processing") as step:
+                step.input = f"Processing {len(files)} PDF files"
+                file_paths = []
+                
+                for idx, file in enumerate(files, 1):
+                    await step.stream_token(f"\nProcessing file {idx}/{len(files)}: {file.name}")
+                    content = file.content
+                    if content is None and file.path:
+                        with open(file.path, "rb") as f:
+                            content = f.read()
 
-                if content:
-                    file_path = os.path.join(UPLOAD_DIR, f"{thread_id}_{file.name}")
-                    with open(file_path, "wb") as f:
-                        f.write(content)
-                    file_paths.append(file_path)
-                else:
-                    await cl.Message(content=f"Could not read content of file {file.name}.").send()
+                    if content:
+                        file_path = os.path.join(UPLOAD_DIR, f"{thread_id}_{file.name}")
+                        with open(file_path, "wb") as f:
+                            f.write(content)
+                        file_paths.append(file_path)
+                        await step.stream_token(" ✓")
+                    else:
+                        await step.stream_token(" ✗")
+                        await cl.Message(content=f"Could not read content of file {file.name}.").send()
 
-            agent.process_pdfs(file_paths, thread_id)
+                await step.stream_token("\nAnalyzing PDF contents...")
+                agent.process_pdfs(file_paths, thread_id)
+                step.output = f"Successfully processed {len(files)} PDF(s)"
 
-            await cl.Message(
-                content=f"Processed {len(files)} PDF(s)."
-            ).send()
-            
             if not message.content.strip():
                 return
 
@@ -72,43 +76,48 @@ async def on_message(message: cl.Message):
     graph = cl.user_session.get("graph")
     config = {"configurable": {"thread_id": thread_id}}
     
-    # Create initial input with the user's message
     initial_input = {
         "request": message.content,
         "thread_id": thread_id,
         "conversation_history": conversation_history
     }
 
-    # Run the graph and get the final state
-    async for _ in graph.astream(initial_input, config):
-        pass
+    async with cl.Step(name="Processing Request", type="run") as step:
+        step.input = message.content
+        await step.stream_token("Analyzing your request...")
+        
+        async for _ in graph.astream(initial_input, config):
+            await step.stream_token(".")
+        
+        final_state = await graph.aget_state(config)
+        
+        if not final_state:
+            step.output = "Error: Graph execution ended unexpectedly"
+            await cl.Message(content="Something went wrong, the graph execution ended unexpectedly.").send()
+            return
 
-    final_state = await graph.aget_state(config)
-    
-    # Process the final state
-    if not final_state:
-        await cl.Message(content="Something went wrong, the graph execution ended unexpectedly.").send()
-        return
+        if final_state.values.get('missing_fields'):
+            follow_up = final_state.values.get('follow_up_question')
+            if follow_up:
+                step.output = "Additional information needed"
+                conversation_history.append(f"AI: {follow_up}")
+                await cl.Message(content=follow_up).send()
+            return
 
-    # If we need more information from the user
-    if final_state.values.get('missing_fields'):
-        follow_up = final_state.values.get('follow_up_question')
-        print("hiiiiiiiiiiiii follow_up: ", follow_up)
-        if follow_up:
-            conversation_history.append(f"AI: {follow_up}")
-            await cl.Message(content=follow_up).send()
-        return
-
-    # If we have a generated document
-    if final_state.values.get('generated_document'):
-        doc = final_state.values['generated_document']
-        response = "Here is the generated document:"
-        conversation_history.append(f"AI: {response}")
-        await cl.Message(
-            content=f"{response}\n\n{doc}",
-            elements=[cl.File(name="generated_document.txt", content=doc.encode(), display="inline")]
-        ).send()
-        return
+        if final_state.values.get('generated_document'):
+            async with cl.Step(name="Document Generation", type="generation") as doc_step:
+                doc = final_state.values['generated_document']
+                doc_step.input = "Generating final document"
+                await doc_step.stream_token("Formatting document...")
+                doc_step.output = "✓ Document ready"
+                
+            response = "Here is the generated document:"
+            conversation_history.append(f"AI: {response}")
+            await cl.Message(
+                content=f"{response}\n\n{doc}",
+                elements=[cl.File(name="generated_document.txt", content=doc.encode(), display="inline")]
+            ).send()
+            return
 
     # If we reach here, something unexpected happened
     await cl.Message(content="An unexpected error occurred during processing.").send()
