@@ -1,17 +1,13 @@
 import sys
 import os
 import uuid
-from typing import List
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 import chainlit as cl
-from langgraph.graph import END
-
 from backend.src.graph import create_graph
-from backend.src.agent import DocumentGenerationAgent
 
 UPLOAD_DIR = os.path.join(project_root, "backend", "uploaded_pdfs")
 if not os.path.exists(UPLOAD_DIR):
@@ -72,34 +68,30 @@ async def on_message(message: cl.Message):
     graph = cl.user_session.get("graph")
     config = {"configurable": {"thread_id": thread_id}}
     
-    # Create initial input with the user's message
     initial_input = {
         "request": message.content,
         "thread_id": thread_id,
-        "conversation_history": conversation_history
+        "conversation_history": conversation_history,
+        "files": [file.name for file in message.elements if "application/pdf" in file.mime]
     }
 
-    # Run the graph and get the final state
     async for _ in graph.astream(initial_input, config):
         pass
-
+    
     final_state = await graph.aget_state(config)
     
-    # Process the final state
     if not final_state:
         await cl.Message(content="Something went wrong, the graph execution ended unexpectedly.").send()
         return
 
-    # If we need more information from the user
     if final_state.values.get('missing_fields'):
+        print("---MISSING FIELDS---", final_state.values.get('missing_fields'))
         follow_up = final_state.values.get('follow_up_question')
-        print("hiiiiiiiiiiiii follow_up: ", follow_up)
         if follow_up:
             conversation_history.append(f"AI: {follow_up}")
             await cl.Message(content=follow_up).send()
         return
 
-    # If we have a generated document
     if final_state.values.get('generated_document'):
         doc = final_state.values['generated_document']
         response = "Here is the generated document:"
@@ -109,6 +101,11 @@ async def on_message(message: cl.Message):
             elements=[cl.File(name="generated_document.txt", content=doc.encode(), display="inline")]
         ).send()
         return
+        
+    if final_state.values.get('conversational_response'):
+        response = final_state.values['conversational_response']
+        conversation_history.append(f"AI: {response}")
+        await cl.Message(content=response).send()
+        return
 
-    # If we reach here, something unexpected happened
     await cl.Message(content="An unexpected error occurred during processing.").send()
