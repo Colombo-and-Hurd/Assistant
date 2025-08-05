@@ -20,6 +20,7 @@ async def on_chat_start():
         cl.user_session.set("graph", app)
         cl.user_session.set("agent", agent)
         cl.user_session.set("conversation_history", [])
+        cl.user_session.set("uploaded_files", [])
         
         thread_id = str(uuid.uuid4())
         cl.user_session.set("thread_id", thread_id)
@@ -60,6 +61,11 @@ async def on_message(message: cl.Message):
 
                 await step.stream_token("\nAnalyzing PDF contents...")
                 agent.process_pdfs(file_paths, thread_id)
+                
+                uploaded_files = cl.user_session.get("uploaded_files")
+                uploaded_files.extend(file_paths)
+                cl.user_session.set("uploaded_files", uploaded_files)
+
                 step.output = f"Successfully processed {len(files)} PDF(s)"
 
             if not message.content.strip():
@@ -76,8 +82,9 @@ async def on_message(message: cl.Message):
         "request": message.content,
         "thread_id": thread_id,
         "conversation_history": conversation_history,
-        "files": [file.name for file in message.elements if "application/pdf" in file.mime]
+        "files": cl.user_session.get("uploaded_files")
     }
+
     
     async with cl.Step(name="Processing Request", type="run") as step:
         step.input = message.content

@@ -102,6 +102,7 @@ class DocumentGenerationAgent:
         Checks if the context is complete and generates a follow-up question if needed.
         """
         print("---CHECKING CONTEXT COMPLETENESS---")
+        state["missing_fields"] = []
         request = state["request"]
         conversation_history = state.get("conversation_history", [])
         
@@ -148,13 +149,12 @@ class DocumentGenerationAgent:
             
             state["follow_up_question"] = response.follow_up_question
             state["missing_fields"] = response.missing_fields
-            return state
         else:
             state["follow_up_question"] = ""
             state["missing_fields"] = []
             if not state.get("retrieved_context"):
                 state["translated_context"] = context
-            return state
+        return state
 
     def generate_document(self, state: GraphState):
         """

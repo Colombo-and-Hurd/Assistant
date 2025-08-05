@@ -18,6 +18,10 @@ You are helping determine whether enough information has been gathered to draft 
 - Client Gender: {client_gender}
 - Client Endeavor: {client_endeavor}
 
+
+IMPORTANT : If the client name and the client pronouns are available then the missing fields should be empty and the follow up question should be empty.
+Analyze the context and conversation history step by step to get whether the client name and the client pronouns are available.
+
 ## Instructions:
 1. Identify which of the required fields are missing (i.e., are "Not provided", None, or empty).
 2. Return a JSON object in the following format:
