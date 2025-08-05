@@ -3,6 +3,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from backend.src.schemas import GraphState
 from backend.src.agent import DocumentGenerationAgent
+from backend.src.orchestrator import OrchestratorAgent
 
 def decide_next_node(state: GraphState) -> str:
     """
@@ -13,6 +14,7 @@ def decide_next_node(state: GraphState) -> str:
         return "generate_document"
     else:
         print("---CONTEXT IS INCOMPLETE, PAUSING FOR USER INPUT---")
+        state["missing_fields"] = []
         return "request_user_info"
 
 def create_graph():
@@ -20,16 +22,25 @@ def create_graph():
     Creates and compiles the LangGraph agent.
     """
     agent = DocumentGenerationAgent()
+    orchestrator = OrchestratorAgent()
     workflow = StateGraph(GraphState)
 
     workflow.add_node("retrieve_context", agent.retrieve_context)
     workflow.add_node("translate_context_to_english", agent.translate_context_to_english)
     workflow.add_node("generate_document", agent.generate_document)
     workflow.add_node("request_user_info", agent.request_user_info)
-
     workflow.add_node("context_completeness_check", agent.context_completeness_check)
+    workflow.add_node("context_gatherer_agent", agent.context_gatherer_agent)
+    workflow.add_node("master_router", orchestrator.master_router)
 
-    workflow.set_entry_point("retrieve_context")
+    workflow.set_conditional_entry_point(
+        orchestrator.master_router,
+        {
+            "retrieve_context": "retrieve_context",
+            "context_gatherer_agent": "context_gatherer_agent",
+            "context_completeness_check": "context_completeness_check",
+        },
+    )
 
     workflow.add_edge("retrieve_context", "translate_context_to_english")
     workflow.add_edge("translate_context_to_english", "context_completeness_check")
@@ -42,6 +53,8 @@ def create_graph():
         },
     )
     workflow.add_edge("generate_document", END)
+    workflow.add_edge("context_gatherer_agent", END)
+    workflow.add_edge("request_user_info","context_completeness_check")
 
     memory = MemorySaver()
     app = workflow.compile(checkpointer=memory, interrupt_before=["request_user_info"])

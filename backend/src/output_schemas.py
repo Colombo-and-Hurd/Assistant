@@ -6,17 +6,34 @@ class ContextCompleteness(BaseModel):
     missing_fields: List[str] = Field(
         description="List of required information fields that are missing from the context. Return an empty list if all required information is present."
     )
-    follow_up_question: str = Field(
+    follow_up_question: Optional[str] = Field(
         description="A follow-up question to ask the user to get the missing information. This should be an empty string if no information is missing."
     )
 
-class EntityExtraction(BaseModel):
-    """Schema for entity extraction output."""
-    client_name: Optional[str] = Field(
-        description="The full name of the client/person this document is about. Return null if not found."
+class ConversationResponse(BaseModel):
+    """Schema for conversation agent output."""
+    client_name: str = Field(
+        default="",
+        description="The client's full name if found in the message"
     )
-    pronouns: Optional[str] = Field(
-        description="The pronouns used for the client (e.g., 'she/her', 'he/him', 'they/them'). Return null if not found."
+    client_pronouns: str = Field(
+        default="",
+        description="The client's pronouns if found in the message"
+    )
+    client_gender: str = Field(
+        default="",
+        description="The client's gender if found in the message"
+    )
+    client_endeavor: str = Field(
+        default="",
+        description="The purpose of the recommendation if found in the message"
+    )
+    lor_questionnaire: str = Field(
+        default="",
+        description="The questionnaire responses if found in the message"
+    )
+    response: str = Field(
+        description="The friendly response to send to the user"
     )
 
 class Translation(BaseModel):

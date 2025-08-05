@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Any, Optional, TypedDict
+from typing import List, Optional, TypedDict
 from langchain_core.documents import Document
 
 class GraphState(TypedDict):
@@ -20,14 +20,21 @@ class GraphState(TypedDict):
     """
     request: str
     thread_id: str
+    files: List[str]
     retrieved_context: List[Document]
     translated_context: str
     required_info: List[str]
     user_provided_info: str
-    missing_fields: List[str]
-    follow_up_question: str
+    missing_fields: List[str] = []
+    follow_up_question: str = ""
     generated_document: str
     conversation_history: List[str]
+    conversational_response: str
+    # Store important information separately 
+    client_name: Optional[str] = None
+    client_pronouns: Optional[str] = None
+    client_endeavor: Optional[str] = None
+    lor_questionnaire: Optional[str] = None
 
 class GenerationResponse(BaseModel):
     thread_id: str

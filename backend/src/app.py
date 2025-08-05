@@ -1,17 +1,13 @@
 import sys
 import os
 import uuid
-from typing import List
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 import chainlit as cl
-from langgraph.graph import END
-
 from backend.src.graph import create_graph
-from backend.src.agent import DocumentGenerationAgent
 
 UPLOAD_DIR = os.path.join(project_root, "backend", "uploaded_pdfs")
 if not os.path.exists(UPLOAD_DIR):
@@ -24,6 +20,7 @@ async def on_chat_start():
         cl.user_session.set("graph", app)
         cl.user_session.set("agent", agent)
         cl.user_session.set("conversation_history", [])
+        cl.user_session.set("uploaded_files", [])
         
         thread_id = str(uuid.uuid4())
         cl.user_session.set("thread_id", thread_id)
@@ -64,6 +61,11 @@ async def on_message(message: cl.Message):
 
                 await step.stream_token("\nAnalyzing PDF contents...")
                 agent.process_pdfs(file_paths, thread_id)
+                
+                uploaded_files = cl.user_session.get("uploaded_files")
+                uploaded_files.extend(file_paths)
+                cl.user_session.set("uploaded_files", uploaded_files)
+
                 step.output = f"Successfully processed {len(files)} PDF(s)"
 
             if not message.content.strip():
@@ -79,9 +81,11 @@ async def on_message(message: cl.Message):
     initial_input = {
         "request": message.content,
         "thread_id": thread_id,
-        "conversation_history": conversation_history
+        "conversation_history": conversation_history,
+        "files": cl.user_session.get("uploaded_files")
     }
 
+    
     async with cl.Step(name="Processing Request", type="run") as step:
         step.input = message.content
         await step.stream_token("Analyzing your request...")
@@ -97,6 +101,7 @@ async def on_message(message: cl.Message):
             return
 
         if final_state.values.get('missing_fields'):
+            print("---MISSING FIELDS---", final_state.values.get('missing_fields'))
             follow_up = final_state.values.get('follow_up_question')
             if follow_up:
                 step.output = "Additional information needed"
@@ -110,7 +115,7 @@ async def on_message(message: cl.Message):
                 doc_step.input = "Generating final document"
                 await doc_step.stream_token("Formatting document...")
                 doc_step.output = "✓ Document ready"
-                
+
             response = "Here is the generated document:"
             conversation_history.append(f"AI: {response}")
             await cl.Message(
@@ -119,5 +124,11 @@ async def on_message(message: cl.Message):
             ).send()
             return
 
-    # If we reach here, something unexpected happened
-    await cl.Message(content="An unexpected error occurred during processing.").send()
+        if final_state.values.get('conversational_response'):
+            response = final_state.values['conversational_response']
+            conversation_history.append(f"AI: {response}")
+            await cl.Message(content=response).send()
+            return
+
+
+        await cl.Message(content="An unexpected error occurred during processing.").send()
