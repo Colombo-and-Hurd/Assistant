@@ -25,19 +25,21 @@ jobs:
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
+
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+
       - name: ACR login server
         id: acr
         run: echo "login=$(az acr show -n $ACR_NAME --query loginServer -o tsv)" >> $GITHUB_OUTPUT
-      - name: Build & push
-        uses: azure/acr-build@v1
-        with:
-          registry: ${{ env.ACR_NAME }}
-          repository: assistant
-          image: assistant
-          tag: ${{ github.sha }}
+
+      - name: Build & push (az acr build)
+        run: |
+          az acr build \
+            --registry "$ACR_NAME" \
+            --image assistant:${{ github.sha }} \
+            .
 
   latest-pr-gate:
     runs-on: ubuntu-latest
@@ -64,9 +66,11 @@ jobs:
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+
       - name: ACR login server
         id: acr
         run: echo "login=$(az acr show -n $ACR_NAME --query loginServer -o tsv)" >> $GITHUB_OUTPUT
+
       - name: Ensure STAGING app exists
         run: |
           ACR_LOGIN=${{ steps.acr.outputs.login }}
@@ -75,6 +79,7 @@ jobs:
               --environment "$ACA_ENV" --ingress external --target-port "$CONTAINER_PORT" \
               --image "$ACR_LOGIN/assistant:${{ github.sha }}" --cpu 0.5 --memory 1Gi
           fi
+
       - name: Sync secrets/env (STAGING)
         run: |
           az containerapp secret set -g "$AZ_RG" -n "$APP_STAGING" \
@@ -86,6 +91,7 @@ jobs:
               AZURE_SEARCH_ENDPOINT='${{ vars.AZURE_SEARCH_ENDPOINT }}' \
               AZURE_SEARCH_INDEX='${{ vars.AZURE_SEARCH_INDEX }}' \
               PORT="$CONTAINER_PORT" HOST="0.0.0.0"
+
       - name: Deploy (STAGING)
         run: |
           ACR_LOGIN=${{ steps.acr.outputs.login }}
@@ -103,9 +109,11 @@ jobs:
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+
       - name: ACR login server
         id: acr
         run: echo "login=$(az acr show -n $ACR_NAME --query loginServer -o tsv)" >> $GITHUB_OUTPUT
+
       - name: Ensure PROD app exists
         run: |
           ACR_LOGIN=${{ steps.acr.outputs.login }}
@@ -114,6 +122,7 @@ jobs:
               --environment "$ACA_ENV" --ingress external --target-port "$CONTAINER_PORT" \
               --image "$ACR_LOGIN/assistant:${{ github.sha }}" --cpu 0.5 --memory 1Gi
           fi
+
       - name: Sync secrets/env (PROD)
         run: |
           az containerapp secret set -g "$AZ_RG" -n "$APP_PROD" \
@@ -125,6 +134,7 @@ jobs:
               AZURE_SEARCH_ENDPOINT='${{ vars.AZURE_SEARCH_ENDPOINT }}' \
               AZURE_SEARCH_INDEX='${{ vars.AZURE_SEARCH_INDEX }}' \
               PORT="$CONTAINER_PORT" HOST="0.0.0.0"
+
       - name: Safe rollout
         run: |
           ACR_LOGIN=${{ steps.acr.outputs.login }}
