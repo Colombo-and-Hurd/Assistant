@@ -1,0 +1,137 @@
+name: CI/CD to Azure Container Apps
+on:
+  pull_request: { types: [opened, synchronize, reopened, closed] }
+  push: { branches: [ main ] }
+
+permissions: { id-token: write, contents: read }
+concurrency:
+  group: deploy-${{ github.event_name }}-${{ github.ref || github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  AZ_SUBSCRIPTION_ID: ${{ vars.AZ_SUBSCRIPTION_ID }}
+  AZ_TENANT_ID:       ${{ vars.AZ_TENANT_ID }}
+  AZ_RG:              ${{ vars.AZ_RG }}            # AI-Resources
+  AZ_REGION:          ${{ vars.AZ_REGION }}        # westus2
+  ACR_NAME:           ${{ vars.ACR_NAME }}         # assistantacr
+  ACA_ENV:            ${{ vars.ACA_ENV }}          # assistant-env
+  APP_STAGING:        ${{ vars.APP_STAGING }}      # assistant-staging
+  APP_PROD:           ${{ vars.APP_PROD }}         # assistant-prod
+  CONTAINER_PORT:     ${{ vars.CONTAINER_PORT }}   # 8000
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          credentials: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: ACR login server
+        id: acr
+        run: echo "login=$(az acr show -n $ACR_NAME --query loginServer -o tsv)" >> $GITHUB_OUTPUT
+      - name: Build & push
+        uses: azure/acr-build@v1
+        with:
+          registry: ${{ env.ACR_NAME }}
+          repository: assistant
+          image: assistant
+          tag: ${{ github.sha }}
+
+  latest-pr-gate:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    outputs:
+      should_deploy: ${{ steps.gate.outputs.should_deploy }}
+    steps:
+      - uses: actions/github-script@v7
+        id: gate
+        with:
+          script: |
+            const {owner, repo, number} = context.issue;
+            const prs = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', per_page: 100, sort: 'updated', direction: 'desc' });
+            core.setOutput('should_deploy', String(prs[0]?.number === number));
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: [build, latest-pr-gate]
+    if: github.event_name == 'pull_request' && needs.latest-pr-gate.outputs.should_deploy == 'true'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          credentials: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: ACR login server
+        id: acr
+        run: echo "login=$(az acr show -n $ACR_NAME --query loginServer -o tsv)" >> $GITHUB_OUTPUT
+      - name: Ensure STAGING app exists
+        run: |
+          ACR_LOGIN=${{ steps.acr.outputs.login }}
+          if ! az containerapp show -g "$AZ_RG" -n "$APP_STAGING" >/dev/null 2>&1; then
+            az containerapp create -g "$AZ_RG" -n "$APP_STAGING" \
+              --environment "$ACA_ENV" --ingress external --target-port "$CONTAINER_PORT" \
+              --image "$ACR_LOGIN/assistant:${{ github.sha }}" --cpu 0.5 --memory 1Gi
+          fi
+      - name: Sync secrets/env (STAGING)
+        run: |
+          az containerapp secret set -g "$AZ_RG" -n "$APP_STAGING" \
+            --secrets OPENAI_API_KEY='${{ secrets.OPENAI_API_KEY }}' AZURE_SEARCH_KEY='${{ secrets.AZURE_SEARCH_KEY }}'
+          az containerapp update -g "$AZ_RG" -n "$APP_STAGING" \
+            --set-env-vars \
+              OPENAI_API_KEY=secretref:OPENAI_API_KEY \
+              AZURE_SEARCH_KEY=secretref:AZURE_SEARCH_KEY \
+              AZURE_SEARCH_ENDPOINT='${{ vars.AZURE_SEARCH_ENDPOINT }}' \
+              AZURE_SEARCH_INDEX='${{ vars.AZURE_SEARCH_INDEX }}' \
+              PORT="$CONTAINER_PORT" HOST="0.0.0.0"
+      - name: Deploy (STAGING)
+        run: |
+          ACR_LOGIN=${{ steps.acr.outputs.login }}
+          az containerapp revision set-mode -g "$AZ_RG" -n "$APP_STAGING" --mode Single
+          az containerapp update -g "$AZ_RG" -n "$APP_STAGING" --image "$ACR_LOGIN/assistant:${{ github.sha }}"
+          az containerapp show -g "$AZ_RG" -n "$APP_STAGING" --query properties.configuration.ingress.fqdn -o tsv
+
+  deploy-prod:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          credentials: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: ACR login server
+        id: acr
+        run: echo "login=$(az acr show -n $ACR_NAME --query loginServer -o tsv)" >> $GITHUB_OUTPUT
+      - name: Ensure PROD app exists
+        run: |
+          ACR_LOGIN=${{ steps.acr.outputs.login }}
+          if ! az containerapp show -g "$AZ_RG" -n "$APP_PROD" >/dev/null 2>&1; then
+            az containerapp create -g "$AZ_RG" -n "$APP_PROD" \
+              --environment "$ACA_ENV" --ingress external --target-port "$CONTAINER_PORT" \
+              --image "$ACR_LOGIN/assistant:${{ github.sha }}" --cpu 0.5 --memory 1Gi
+          fi
+      - name: Sync secrets/env (PROD)
+        run: |
+          az containerapp secret set -g "$AZ_RG" -n "$APP_PROD" \
+            --secrets OPENAI_API_KEY='${{ secrets.OPENAI_API_KEY }}' AZURE_SEARCH_KEY='${{ secrets.AZURE_SEARCH_KEY }}'
+          az containerapp update -g "$AZ_RG" -n "$APP_PROD" \
+            --set-env-vars \
+              OPENAI_API_KEY=secretref:OPENAI_API_KEY \
+              AZURE_SEARCH_KEY=secretref:AZURE_SEARCH_KEY \
+              AZURE_SEARCH_ENDPOINT='${{ vars.AZURE_SEARCH_ENDPOINT }}' \
+              AZURE_SEARCH_INDEX='${{ vars.AZURE_SEARCH_INDEX }}' \
+              PORT="$CONTAINER_PORT" HOST="0.0.0.0"
+      - name: Safe rollout
+        run: |
+          ACR_LOGIN=${{ steps.acr.outputs.login }}
+          IMG="$ACR_LOGIN/assistant:${{ github.sha }}"
+          az containerapp revision set-mode -g "$AZ_RG" -n "$APP_PROD" --mode Multiple
+          az containerapp update -g "$AZ_RG" -n "$APP_PROD" --image "$IMG"
+          NEWREV=$(az containerapp revision list -g "$AZ_RG" -n "$APP_PROD" --query "[?properties.active].name | [-1]" -o tsv)
+          az containerapp ingress traffic set -g "$AZ_RG" -n "$APP_PROD" --revision-weight $NEWREV=100
+          az containerapp revision set-mode -g "$AZ_RG" -n "$APP_PROD" --mode Single
+          az containerapp show -g "$AZ_RG" -n "$APP_PROD" --query properties.configuration.ingress.fqdn -o tsv
