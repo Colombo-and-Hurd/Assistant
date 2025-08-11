@@ -7,6 +7,7 @@ def create_context_completeness_prompt(history, query, context, client_name=None
 
     base_prompt = f"""
 You are helping determine whether enough information has been gathered to draft a Letter of Recommendation (LOR) for a client.
+You should focus on the user query and the retrieved context to determine the missing fields. If there is a conflict between the user query and the retrieved context, you should prioritize the user query.
 
 ## Required Information:
 - Client's Full Name
