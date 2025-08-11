@@ -11,13 +11,13 @@ concurrency:
 env:
   AZ_SUBSCRIPTION_ID: ${{ vars.AZ_SUBSCRIPTION_ID }}
   AZ_TENANT_ID:       ${{ vars.AZ_TENANT_ID }}
-  AZ_RG:              ${{ vars.AZ_RG }}            # AI-Resources
-  AZ_REGION:          ${{ vars.AZ_REGION }}        # westus2
-  ACR_NAME:           ${{ vars.ACR_NAME }}         # assistantacr
-  ACA_ENV:            ${{ vars.ACA_ENV }}          # assistant-env
-  APP_STAGING:        ${{ vars.APP_STAGING }}      # assistant-staging
-  APP_PROD:           ${{ vars.APP_PROD }}         # assistant-prod
-  CONTAINER_PORT:     ${{ vars.CONTAINER_PORT }}   # 8000
+  AZ_RG:              ${{ vars.AZ_RG }}
+  AZ_REGION:          ${{ vars.AZ_REGION }}
+  ACR_NAME:           ${{ vars.ACR_NAME }}
+  ACA_ENV:            ${{ vars.ACA_ENV }}
+  APP_STAGING:        ${{ vars.APP_STAGING }}
+  APP_PROD:           ${{ vars.APP_PROD }}
+  CONTAINER_PORT:     ${{ vars.CONTAINER_PORT }}
 
 jobs:
   build:
@@ -25,7 +25,6 @@ jobs:
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
-
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -36,10 +35,7 @@ jobs:
 
       - name: Build & push (az acr build)
         run: |
-          az acr build \
-            --registry "$ACR_NAME" \
-            --image assistant:${{ github.sha }} \
-            .
+          az acr build --registry "$ACR_NAME" --image assistant:${{ github.sha }} .
 
   latest-pr-gate:
     runs-on: ubuntu-latest
@@ -71,13 +67,23 @@ jobs:
         id: acr
         run: echo "login=$(az acr show -n $ACR_NAME --query loginServer -o tsv)" >> $GITHUB_OUTPUT
 
-      - name: Ensure STAGING app exists
+      - name: Ensure STAGING app exists (with registry creds)
         run: |
           ACR_LOGIN=${{ steps.acr.outputs.login }}
           if ! az containerapp show -g "$AZ_RG" -n "$APP_STAGING" >/dev/null 2>&1; then
             az containerapp create -g "$AZ_RG" -n "$APP_STAGING" \
               --environment "$ACA_ENV" --ingress external --target-port "$CONTAINER_PORT" \
-              --image "$ACR_LOGIN/assistant:${{ github.sha }}" --cpu 0.5 --memory 1Gi
+              --image "$ACR_LOGIN/assistant:${{ github.sha }}" \
+              --registry-server "$ACR_LOGIN" \
+              --registry-username "${{ secrets.ACR_USERNAME }}" \
+              --registry-password "${{ secrets.ACR_PASSWORD }}" \
+              --cpu 0.5 --memory 1Gi
+          else
+            # make sure registry creds exist on the app (idempotent)
+            az containerapp registry set -g "$AZ_RG" -n "$APP_STAGING" \
+              --server "$ACR_LOGIN" \
+              --username "${{ secrets.ACR_USERNAME }}" \
+              --password "${{ secrets.ACR_PASSWORD }}" || true
           fi
 
       - name: Sync secrets/env (STAGING)
@@ -114,13 +120,22 @@ jobs:
         id: acr
         run: echo "login=$(az acr show -n $ACR_NAME --query loginServer -o tsv)" >> $GITHUB_OUTPUT
 
-      - name: Ensure PROD app exists
+      - name: Ensure PROD app exists (with registry creds)
         run: |
           ACR_LOGIN=${{ steps.acr.outputs.login }}
           if ! az containerapp show -g "$AZ_RG" -n "$APP_PROD" >/dev/null 2>&1; then
             az containerapp create -g "$AZ_RG" -n "$APP_PROD" \
               --environment "$ACA_ENV" --ingress external --target-port "$CONTAINER_PORT" \
-              --image "$ACR_LOGIN/assistant:${{ github.sha }}" --cpu 0.5 --memory 1Gi
+              --image "$ACR_LOGIN/assistant:${{ github.sha }}" \
+              --registry-server "$ACR_LOGIN" \
+              --registry-username "${{ secrets.ACR_USERNAME }}" \
+              --registry-password "${{ secrets.ACR_PASSWORD }}" \
+              --cpu 0.5 --memory 1Gi
+          else
+            az containerapp registry set -g "$AZ_RG" -n "$APP_PROD" \
+              --server "$ACR_LOGIN" \
+              --username "${{ secrets.ACR_USERNAME }}" \
+              --password "${{ secrets.ACR_PASSWORD }}" || true
           fi
 
       - name: Sync secrets/env (PROD)
