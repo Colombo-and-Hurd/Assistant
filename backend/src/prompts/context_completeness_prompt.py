@@ -1,54 +1,68 @@
-from langchain_core.prompts import ChatPromptTemplate
 
-context_completeness_prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            """You are an expert in analyzing conversations to determine if all necessary information has been provided.
+def create_context_completeness_prompt(history, query, context, client_name=None, client_pronouns=None, client_endeavor=None, client_gender=None):
+    client_name = client_name or "Not provided"
+    client_pronouns = client_pronouns or "Not provided"
+    client_endeavor = client_endeavor or "Not provided"
+    client_gender = client_gender or "Not provided"
 
-You will be provided with the conversation history and the retrieved context.
+    base_prompt = f"""
+You are helping determine whether enough information has been gathered to draft a Letter of Recommendation (LOR) for a client.
+You should focus on the user query and the retrieved context to determine the missing fields. If there is a conflict between the user query and the retrieved context, you should prioritize the user query.
 
-IMPORTANT : ***If the provided context is missing or is empty then you should ask for the documents so that you can analyze them and provide the information.***
+## Required Information:
+- Client's Full Name
+- Client's Pronouns
 
-Your task is to check if the user has provided the following details in the conversation history or in the context:
-- Client's Name
-- Client's Gender
+## Provided Information:
+- Client Name: {client_name}
+- Client Pronouns: {client_pronouns}
+- Client Gender: {client_gender}
+- Client Endeavor: {client_endeavor}
 
-Based on the provided context and conversation history, you need to identify which of these fields are missing.
 
-If any of these fields are missing, you must generate a follow-up question to ask the user for the missing information. The follow-up question should be polite and clear.
+IMPORTANT : If the client name and the client pronouns are available then the missing fields should be empty and the follow up question should be empty.
+Analyze the context and conversation history step by step to get whether the client name and the client pronouns are available.
 
-If all the required information is present, you should indicate that the context is complete.
+## Instructions:
+1. Identify which of the required fields are missing (i.e., are "Not provided", None, or empty).
+2. Return a JSON object in the following format:
 
-The output should be a JSON object with two fields:
-- "missing_fields": A list of strings containing the names of the missing fields. If no fields are missing, this should be an empty list.
-- "follow_up_question": A string containing the question to ask the user. If no follow-up is needed, this should be an empty string.
-
-Example ( Most Important ):
-If the provided context is missing or empty then there is no sense in moving forward, politely request the user to upload the documents.
 {{
-    "missing_fields": ["documents"],
-    "follow_up_question": "have something like this : Hey, I can help with your query could you please upload the documents so that I can analyze them and provide the information?"
+  "missing_fields": ["<name of missing fields>"],
+  "follow_up_question": "<politely ask for the missing fields>"
 }}
 
-Example:
-If the user's query is "Please create a LOR for the client." and the context does not contain the client's name, gender the output should be:
-{{
-    "missing_fields": ["client_name", "client_gender"],
-    "follow_up_question": "I can help with that. Could you please provide the client's name and gender?"
-}}
+If no fields are missing, return:
 
-Example:
-If the user's query is "Create a LOR for John Doe, a male entrepreneur who wants to start a tech company." and all information is present, the output should be:
 {{
-    "missing_fields": [],
-    "follow_up_question": ""
+  "missing_fields": [],
+  "follow_up_question": ""
 }}
-""",
-        ),
-        (
-            "human",
-            "Here is the conversation history:\n{history}\n\nHere is the user's query:\n{query}\n\nHere is the retrieved context:\n{context}",
-        ),
-    ]
-)
+"""
+
+    if client_name == "Not provided" or client_pronouns == "Not provided":
+        base_prompt += f"""
+
+## Additional Context:
+Conversation History:
+{history}
+
+User's Query:
+{query}
+
+Retrieved Context:
+{context}
+"""
+
+    else:
+        base_prompt += f"""
+
+## User's Query:
+{query}
+
+
+Retrieved Context:
+{context}
+"""
+
+    return base_prompt.strip()
