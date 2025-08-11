@@ -74,27 +74,34 @@ jobs:
             exit 1
           }
 
-      - name: Ensure STAGING app exists (with registry creds & wait)
+      - name: Ensure STAGING app exists (update image + creds, wait)
         run: |
           set -e
           ACR_LOGIN=${{ steps.acr.outputs.login }}
+          IMG="$ACR_LOGIN/assistant:${{ github.sha }}"
 
           if ! az containerapp show -g "$AZ_RG" -n "$APP_STAGING" >/dev/null 2>&1; then
             echo "Creating $APP_STAGING…"
             az containerapp create -g "$AZ_RG" -n "$APP_STAGING" \
               --environment "$ACA_ENV" \
               --ingress external --target-port "$CONTAINER_PORT" \
-              --image "$ACR_LOGIN/assistant:${{ github.sha }}" \
+              --image "$IMG" \
               --registry-server "$ACR_LOGIN" \
               --registry-username "${{ secrets.ACR_USERNAME }}" \
               --registry-password "${{ secrets.ACR_PASSWORD }}" \
               --cpu 0.5 --memory 1Gi
           else
-            echo "App exists; ensuring registry credentials are set…"
+            echo "App exists; setting registry credentials and forcing update to new image…"
             az containerapp registry set -g "$AZ_RG" -n "$APP_STAGING" \
               --server "$ACR_LOGIN" \
               --username "${{ secrets.ACR_USERNAME }}" \
               --password "${{ secrets.ACR_PASSWORD }}" || true
+
+            az containerapp update -g "$AZ_RG" -n "$APP_STAGING" \
+              --image "$IMG" \
+              --registry-server "$ACR_LOGIN" \
+              --registry-username "${{ secrets.ACR_USERNAME }}" \
+              --registry-password "${{ secrets.ACR_PASSWORD }}"
           fi
 
           echo "Waiting for provisioning to finish…"
@@ -107,10 +114,8 @@ jobs:
           done
 
           if [ "$STATE" != "Succeeded" ]; then
-            echo "Provisioning failed. Dumping conditions and registry info:"
-            az containerapp show -g "$AZ_RG" -n "$APP_STAGING" --query properties.status.conditions
-            az containerapp show -g "$AZ_RG" -n "$APP_STAGING" --query properties.configuration.registries
-            az containerapp show -g "$AZ_RG" -n "$APP_STAGING" --query properties.template.containers[0].image
+            echo "Provisioning failed. Dumping full resource JSON:"
+            az containerapp show -g "$AZ_RG" -n "$APP_STAGING" -o json
             exit 1
           fi
 
@@ -155,17 +160,18 @@ jobs:
             exit 1
           }
 
-      - name: Ensure PROD app exists (with registry creds & wait)
+      - name: Ensure PROD app exists (update image + creds, wait)
         run: |
           set -e
           ACR_LOGIN=${{ steps.acr.outputs.login }}
+          IMG="$ACR_LOGIN/assistant:${{ github.sha }}"
 
           if ! az containerapp show -g "$AZ_RG" -n "$APP_PROD" >/dev/null 2>&1; then
             echo "Creating $APP_PROD…"
             az containerapp create -g "$AZ_RG" -n "$APP_PROD" \
               --environment "$ACA_ENV" \
               --ingress external --target-port "$CONTAINER_PORT" \
-              --image "$ACR_LOGIN/assistant:${{ github.sha }}" \
+              --image "$IMG" \
               --registry-server "$ACR_LOGIN" \
               --registry-username "${{ secrets.ACR_USERNAME }}" \
               --registry-password "${{ secrets.ACR_PASSWORD }}" \
@@ -175,6 +181,12 @@ jobs:
               --server "$ACR_LOGIN" \
               --username "${{ secrets.ACR_USERNAME }}" \
               --password "${{ secrets.ACR_PASSWORD }}" || true
+
+            az containerapp update -g "$AZ_RG" -n "$APP_PROD" \
+              --image "$IMG" \
+              --registry-server "$ACR_LOGIN" \
+              --registry-username "${{ secrets.ACR_USERNAME }}" \
+              --registry-password "${{ secrets.ACR_PASSWORD }}"
           fi
 
           echo "Waiting for provisioning to finish…"
@@ -187,10 +199,8 @@ jobs:
           done
 
           if [ "$STATE" != "Succeeded" ]; then
-            echo "Provisioning failed. Dumping conditions and registry info:"
-            az containerapp show -g "$AZ_RG" -n "$APP_PROD" --query properties.status.conditions
-            az containerapp show -g "$AZ_RG" -n "$APP_PROD" --query properties.configuration.registries
-            az containerapp show -g "$AZ_RG" -n "$APP_PROD" --query properties.template.containers[0].image
+            echo "Provisioning failed. Dumping full resource JSON:"
+            az containerapp show -g "$AZ_RG" -n "$APP_PROD" -o json
             exit 1
           fi
 
