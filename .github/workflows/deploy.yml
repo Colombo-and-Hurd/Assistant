@@ -97,11 +97,8 @@ jobs:
               --username "${{ secrets.ACR_USERNAME }}" \
               --password "${{ secrets.ACR_PASSWORD }}" || true
 
-            az containerapp update -g "$AZ_RG" -n "$APP_STAGING" \
-              --image "$IMG" \
-              --registry-server "$ACR_LOGIN" \
-              --registry-username "${{ secrets.ACR_USERNAME }}" \
-              --registry-password "${{ secrets.ACR_PASSWORD }}"
+            # NOTE: 'update' does not accept registry flags
+            az containerapp update -g "$AZ_RG" -n "$APP_STAGING" --image "$IMG"
           fi
 
           echo "Waiting for provisioning to finish…"
@@ -170,7 +167,7 @@ jobs:
             echo "Creating $APP_PROD…"
             az containerapp create -g "$AZ_RG" -n "$APP_PROD" \
               --environment "$ACA_ENV" \
-              --ingress external --target-port "$CONTAINER_PORT" \
+              --.ingress external --target-port "$CONTAINER_PORT" \
               --image "$IMG" \
               --registry-server "$ACR_LOGIN" \
               --registry-username "${{ secrets.ACR_USERNAME }}" \
@@ -182,11 +179,7 @@ jobs:
               --username "${{ secrets.ACR_USERNAME }}" \
               --password "${{ secrets.ACR_PASSWORD }}" || true
 
-            az containerapp update -g "$AZ_RG" -n "$APP_PROD" \
-              --image "$IMG" \
-              --registry-server "$ACR_LOGIN" \
-              --registry-username "${{ secrets.ACR_USERNAME }}" \
-              --registry-password "${{ secrets.ACR_PASSWORD }}"
+            az containerapp update -g "$AZ_RG" -n "$APP_PROD" --image "$IMG"
           fi
 
           echo "Waiting for provisioning to finish…"
