@@ -119,11 +119,11 @@ jobs:
       - name: Sync secrets/env (STAGING)
         run: |
           az containerapp secret set -g "$AZ_RG" -n "$APP_STAGING" \
-            --secrets OPENAI_API_KEY='${{ secrets.OPENAI_API_KEY }}' AZURE_SEARCH_KEY='${{ secrets.AZURE_SEARCH_KEY }}'
+            --secrets openai-api-key='${{ secrets.OPENAI_API_KEY }}' azure-search-key='${{ secrets.AZURE_SEARCH_KEY }}'
           az containerapp update -g "$AZ_RG" -n "$APP_STAGING" \
             --set-env-vars \
-              OPENAI_API_KEY=secretref:OPENAI_API_KEY \
-              AZURE_SEARCH_KEY=secretref:AZURE_SEARCH_KEY \
+              OPENAI_API_KEY=secretref:openai-api-key \
+              AZURE_SEARCH_KEY=secretref:azure-search-key \
               AZURE_SEARCH_ENDPOINT='${{ vars.AZURE_SEARCH_ENDPOINT }}' \
               AZURE_SEARCH_INDEX='${{ vars.AZURE_SEARCH_INDEX }}' \
               PORT="$CONTAINER_PORT" HOST="0.0.0.0"
@@ -167,7 +167,7 @@ jobs:
             echo "Creating $APP_PROD…"
             az containerapp create -g "$AZ_RG" -n "$APP_PROD" \
               --environment "$ACA_ENV" \
-              --.ingress external --target-port "$CONTAINER_PORT" \
+                             --ingress external --target-port "$CONTAINER_PORT" \
               --image "$IMG" \
               --registry-server "$ACR_LOGIN" \
               --registry-username "${{ secrets.ACR_USERNAME }}" \
@@ -200,11 +200,11 @@ jobs:
       - name: Sync secrets/env (PROD)
         run: |
           az containerapp secret set -g "$AZ_RG" -n "$APP_PROD" \
-            --secrets OPENAI_API_KEY='${{ secrets.OPENAI_API_KEY }}' AZURE_SEARCH_KEY='${{ secrets.AZURE_SEARCH_KEY }}'
+            --secrets openai-api-key='${{ secrets.OPENAI_API_KEY }}' azure-search-key='${{ secrets.AZURE_SEARCH_KEY }}'
           az containerapp update -g "$AZ_RG" -n "$APP_PROD" \
             --set-env-vars \
-              OPENAI_API_KEY=secretref:OPENAI_API_KEY \
-              AZURE_SEARCH_KEY=secretref:AZURE_SEARCH_KEY \
+              OPENAI_API_KEY=secretref:openai-api-key \
+              AZURE_SEARCH_KEY=secretref:azure-search-key \
               AZURE_SEARCH_ENDPOINT='${{ vars.AZURE_SEARCH_ENDPOINT }}' \
               AZURE_SEARCH_INDEX='${{ vars.AZURE_SEARCH_INDEX }}' \
               PORT="$CONTAINER_PORT" HOST="0.0.0.0"
