@@ -4,9 +4,8 @@ langchain
 langchain-community
 langgraph
 langchain-openai
-langchain_pinecone
+azure-search-documents
 openai
-pinecone-client
 python-dotenv
 pypdf
 tiktoken 
