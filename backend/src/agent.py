@@ -35,7 +35,7 @@ class DocumentGenerationAgent:
         if not openai_api_key:
             raise ValueError("OPENAI_API_KEY environment variable not set.")
             
-        self.llm = ChatOpenAI(temperature=0, openai_api_key=openai_api_key, model_name="gpt-4-turbo-2024-04-09")
+        self.llm = ChatOpenAI(openai_api_key=openai_api_key, model_name="gpt-5-2025-08-07")
         self.embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key, model="text-embedding-3-large")
 
         fields = [
@@ -189,35 +189,6 @@ class DocumentGenerationAgent:
         print("retrieved context: ", context)
         return {"retrieved_context": context}
 
-    def translate_context_to_english(self, state: GraphState):
-        """Translates the retrieved context to English using an LLM."""
-        print("---TRANSLATING CONTEXT TO ENGLISH---")
-        context = state.get("retrieved_context", [])
-        
-        if not context:
-            print("No context to translate")
-            return {"translated_context": ""}
-
-        context_text = " ".join([doc["page_content"] for doc in context])
-        
-        prompt = self.prompt_factory.get_prompt("translation", context_text)
-        
-        response = self.llm.invoke(prompt)
-        print("Raw response: ", response.content)
-        
-        try:
-            import json
-            parsed = json.loads(response.content)
-            if isinstance(parsed, dict) and "translated_text" in parsed:
-                translated_text = parsed["translated_text"]
-            else:
-                translated_text = response.content
-        except json.JSONDecodeError:
-            print("JSON parsing failed, using raw response")
-            translated_text = response.content
-            
-        state["translated_context"] = translated_text   
-        return state
 
     def context_completeness_check(self, state: GraphState):
         """
