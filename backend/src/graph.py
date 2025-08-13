@@ -4,6 +4,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from backend.src.schemas import GraphState
 from backend.src.agent import DocumentGenerationAgent
 from backend.src.orchestrator import OrchestratorAgent
+from backend.src.nodes.translate_context_node import TranslateContextNode
 
 def decide_next_node(state: GraphState) -> str:
     """
@@ -22,11 +23,12 @@ def create_graph():
     Creates and compiles the LangGraph agent.
     """
     agent = DocumentGenerationAgent()
+    translate_node = TranslateContextNode()
     orchestrator = OrchestratorAgent()
     workflow = StateGraph(GraphState)
 
     workflow.add_node("retrieve_context", agent.retrieve_context)
-    workflow.add_node("translate_context_to_english", agent.translate_context_to_english)
+    workflow.add_node("translate_context_to_english", translate_node.execute)
     workflow.add_node("generate_document", agent.generate_document)
     workflow.add_node("request_user_info", agent.request_user_info)
     workflow.add_node("context_completeness_check", agent.context_completeness_check)

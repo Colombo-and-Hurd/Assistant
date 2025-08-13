@@ -13,7 +13,7 @@ class OrchestratorAgent:
         if not openai_api_key:
             raise ValueError("OPENAI_API_KEY environment variable not set.")
         
-        self.llm = ChatOpenAI(temperature=0, openai_api_key=openai_api_key, model_name="gpt-4-turbo-2024-04-09")
+        self.llm = ChatOpenAI(openai_api_key=openai_api_key, model_name="gpt-5-2025-08-07")
         self.prompt_factory = PromptFactory()
 
     def master_router(self, state: GraphState):
